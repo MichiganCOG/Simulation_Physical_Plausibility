@@ -15,9 +15,14 @@ ln -s bullet3/data/ data
 ## Test
 `python scripts/sandbox.py --useGUI`
 
-## Download and add processed pose data files
+## Download and include pose detections (stored as dict in .npy files)
+- [pre-processed H36M detections](https://prism.eecs.umich.edu/natlouis/sim_phys_plaus/datasets/pybullet/h36m_25fps.tar.gz)
+- [pre-processed ForcePose detections](https://prism.eecs.umich.edu/natlouis/sim_phys_plaus/datasets/pybullet/forcepose_1.1.tar.gz)
 ```
 mkdir datasets
-TODO
-python scripts/simulate_trajectory.py --lower_feet_to_height=-0.001 --useGUI
+tar -xvf h36m_25fps.tar.gz -C ./datasets
+tar -xvf forcepose_1.1.tar.gz -C ./datasets
 ```
+
+## Test simulate trajectory (not optimized) on ForcePose
+`python scripts/simulate_trajectory.py --lower_feet_to_height=-0.001 --useGUI`
