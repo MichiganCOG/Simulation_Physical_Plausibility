@@ -19,8 +19,6 @@ from tools.utils import *
 from tools.data_utils import get_pose_data
 from tools.humanoid_utils import get_kin_ref_humanoid, computeCOMposVel, has_fallen, is_balanced
 
-input_dir = './input_trajectories'
-
 parser = argparse.ArgumentParser()
 
 parser.add_argument('--sim_freq', type=int, help='Simulator frequency (Hz), time steps per second')
@@ -39,7 +37,6 @@ parser.add_argument('--drawRef', action='store_true', help='draw kinematic refer
 parser.add_argument('--save_metrics', action='store_true', help='Save above metrics into external file')
 parser.add_argument('--met_group_name', default='reference', help='Group name for set of settings for output metrics.')
 parser.add_argument('--write_video', action='store_true', help='Write out video')
-parser.add_argument('--fps', default=50, help='Video playback FPS. [DEPRECATED]')
 parser.add_argument('--vid_dir', default='./output_videos', type=str, help='Output video directory')
 parser.add_argument('--video_name', type=str, help='Output video name')
 
@@ -69,19 +66,6 @@ parser.add_argument('--subject',      type=str, help='subject name')
 parser.add_argument('--movement',     type=str, help='movement name')
 parser.add_argument('--frame_offset', type=int, help='Offset first frame by this number')
 
-#Just for logging purposes. Does not change results
-parser.add_argument('--log', action='store_true', help='Log wandb')
-parser.add_argument('--exp_name',  type=str)
-parser.add_argument('--project',   type=str,   help='W&B project, but also separate two sets of experiments')
-parser.add_argument('--w_com',     type=float, help='Weight loss for center of mass')
-parser.add_argument('--w_comv',    type=float, help='Weight loss for velocity of center of mass')
-parser.add_argument('--w_com_orn', type=float, help='Weight loss for center of mass orientation')
-parser.add_argument('--w_joint',   type=float, help='Weight loss for joints pose')
-parser.add_argument('--w_vel',     type=float, help='Weight loss for joint velocities')
-parser.add_argument('--w_feet',    type=float, help='Weight loss for feet on ground')
-parser.add_argument('--w_head',    type=float, help='Weight loss for feet on ground')
-parser.add_argument('--w_chest',   type=float, help='Weight loss for feet on ground')
-
 parser.set_defaults(useGUI=False)
 parser.set_defaults(override_ctrl=False)
 parser.set_defaults(drawRef=False)
@@ -99,10 +83,10 @@ defaults = {
         'kds':'100,10,50,50,40,40,30,50,50,40,40,30',
         'window_length':0.5,
         'dataset_root':'./datasets',
-        'dataset':'forcepose_1.1',
+        'dataset':'h36m_25fps',
         'data_splits':'train,val',
-        'subject':'Subject7',
-        'movement':'Counter_Movement_Jump02',
+        'subject':'S11',
+        'movement':'Walking_1',
         'frame_offset':0,
         'plane_adjust':0,
         'friction':0.9,
@@ -113,7 +97,6 @@ defaults = {
         'rotate_ankles':False,
         'pose_format':'mscoco',
         'loops':1,
-        'project':'CVPR2024_Eval_PyBullet'
         }
 #Load configuration file args, if exists
 if cmd_args['cfg_file'] is not None:
@@ -125,7 +108,7 @@ else:
 #Update args from YAML file, cmd line, or default
 for (k,v) in cmd_args.items():
     if v is None or v is False:
-        if k in yaml_args and k not in ['log', 'write_video']: #Do not force logging or write video
+        if k in yaml_args and k not in ['write_video']: #Do not force write video
             cmd_args[k] = yaml_args[k]
         else:
             cmd_args[k] = defaults.get(k, None)
@@ -174,20 +157,6 @@ rotate_ankles = cmd_args['rotate_ankles']
 const_seg_lens = cmd_args['const_seg_lens']
 frame_offset = cmd_args['frame_offset']
 
-#Does not affect results, used here for logging
-use_wandb = False
-if cmd_args['log']:
-    use_wandb = True
-w_com     = cmd_args['w_com']
-w_comv    = cmd_args['w_comv']
-w_com_orn = cmd_args['w_com_orn']
-w_joint   = cmd_args['w_joint']
-w_vel     = cmd_args['w_vel']
-w_feet    = cmd_args['w_feet']
-w_head    = cmd_args['w_head']
-w_chest   = cmd_args['w_chest']
-proj      = cmd_args['project'] 
-
 #Input trajectory
 input_traj = cmd_args['input_traj']
 loadTrajectory = False
@@ -206,7 +175,6 @@ if cmd_args['video_name'] is None:
         vid_name = 'reference_'+subj+'_'+mvmt+'.mp4'
 else:
     vid_name = cmd_args['video_name']
-#fps = cmd_args['fps']
 os.makedirs(cmd_args['vid_dir'], exist_ok=True)
 vid_options = options="--mp4=\""+cmd_args['vid_dir']+"/"+vid_name+"\" --mp4fps="+str(sim_freq)
 
@@ -254,11 +222,6 @@ kdOrg = [
     0, 0, 0, 0, 0, 0, 0, 100, 100, 100, 100, 10, 10, 10, 10, 50, 50, 50, 50, 50, 40, 40, 40, 40,
     40, 40, 40, 40, 30, 50, 50, 50, 50, 50, 40, 40, 40, 40, 40, 40, 40, 40, 30
 ]
-
-if use_wandb:
-    import wandb
-    wandb.init(project=proj, name=cmd_args['exp_name'],\
-            config={**cmd_args})
 
 def main():
     if useGUI:
@@ -452,10 +415,8 @@ def main():
         keyFrameDuration = pose_data['keyFrameDuration']
         motion_data = median_filter(motion_data, 15)
 
-        if proj == 'CVPR2024_Eval_PyBullet_Force':
-            numFrames = min(len(motion_data),100)
-        else:
-            numFrames = len(motion_data)
+        numFrames = min(len(motion_data),100)
+        #numFrames = len(motion_data)
 
         if const_seg_lens:
             seg_lens    = compute_segment_lens(motion_data, pose_format)
@@ -475,12 +436,8 @@ def main():
             rfoot_idxs = [16]
 
         #Try estimating ground plane
-        if proj == 'CVPR2024_Eval_PyBullet_Force':
-            k = int(numFrames*0.05) #% of frames
-            _motion_data = np.copy(motion_data[frame_offset:frame_offset+numFrames])
-        else:
-            k = int(numFrames*0.05)
-            _motion_data = np.copy(motion_data)
+        k = int(numFrames*0.05) #% of frames
+        _motion_data = np.copy(motion_data[frame_offset:frame_offset+numFrames])
 
         _md = np.copy(_motion_data[:,lfoot_idxs+rfoot_idxs]).reshape(-1,3)
         _md = _md[_md[:,1].argsort()][:k]
@@ -488,11 +445,7 @@ def main():
         lfoot_contact = np.ones(len(_motion_data))
         rfoot_contact = np.ones(len(_motion_data))
 
-        if proj == 'CVPR2024_Eval_PyBullet_Force':
-            floor_height = np.mean(_md, axis=0)[1] #Average of lowest k points
-        else:
-            #floor_height = -np.mean(_md, axis=0)[1] #Average of lowest k points
-            floor_height = np.mean(_md, axis=0)[1] #Average of lowest k points
+        floor_height = np.mean(_md, axis=0)[1] #Average of lowest k points
         print('floor height: {}'.format(floor_height))
 
         #Simple contact estimation baseline (Borrowed from Rempe etal.)
@@ -524,10 +477,10 @@ def main():
 
         #Assume contact is on floor at frame 0
         frameTime = t - (cycleCount * vid_time)
-        frame     = int(frameTime/vid_freq)
+        frame     = int(frameTime/vid_freq) + frame_offset
         frameNext = min(frame + 1, frame+numFrames-1)
 
-        frameFraction = (frameTime - (frame*vid_freq))/vid_freq
+        frameFraction = (frameTime - ((frame-frame_offset)*vid_freq))/vid_freq
         t += time_step
 
         targetBasePos, targetBaseOrn, target_positions,\
@@ -561,26 +514,6 @@ def main():
         print(aabbMinL)
         print(aabbMinR)
         print('Decreasing the interpenetration depth by {:.4f}'.format(height_adj))
-
-        if frame_offset > 0: #Now go to frame location, if offset
-            frameTime = t - (cycleCount * vid_time)
-            frame     = int(frameTime/vid_freq) + frame_offset
-            frameNext = min(frame + 1, frame+numFrames-1)
-
-            frameFraction = (frameTime - ((frame-frame_offset)*vid_freq))/vid_freq
-            t += time_step
-
-            targetBasePos, targetBaseOrn, target_positions,\
-                baseLinVel, baseAngVel, target_vels = get_motion_data(frame, frameNext, frameFraction, motion_data, file_format='json', pose_format=pose_format, rotate_ankles=rotate_ankles)
-
-            targ_base[-1] = targetBasePos
-            targ_base_orn[-1] = targetBaseOrn
-            targ_base_vel[-1] = baseLinVel
-            targ_base_orn_vel[-1] = baseAngVel
-            tpos[-1]  = target_positions
-            tvels[-1] = target_vels
-
-            set_body_pos(humanoid, targ_base[0], targ_base_orn[0], tpos[0], targ_base_vel[0], targ_base_orn_vel[0], tvels[0])
 
     targ_base = np.array(targ_base)
     targ_base += [0, height_adj, 0]
@@ -757,7 +690,7 @@ def main():
                                                 forces=maxForces,
                                                 )
 
-            #set_body_pos(humanoid_kin, targ_base[-1], targ_base_orn[-1], gtpos[-1], targ_base_vel[-1], targ_base_orn_vel[-1], gtvels[-1])
+            set_body_pos(humanoid_kin, targ_base[-1], targ_base_orn[-1], gtpos[-1], targ_base_vel[-1], targ_base_orn_vel[-1], gtvels[-1])
 
             basePos, baseOrn = p.getBasePositionAndOrientation(humanoid)
             baseVel, baseOrnVel = p.getBaseVelocity(humanoid)
@@ -1197,24 +1130,6 @@ def main():
         plt.tight_layout()
         plt.show()
         plt.close()
-
-    if use_wandb:
-        x = curr_base[:,0]
-        y = curr_base[:,1]
-        z = curr_base[:,2]
-
-        data_x = [[t, x_val] for (t,x_val) in zip(np.arange(len(x)),x)]
-        data_y = [[t, y_val] for (t,y_val) in zip(np.arange(len(y)),y)]
-        data_z = [[t, z_val] for (t,z_val) in zip(np.arange(len(z)),z)]
-        table_x = wandb.Table(data=data_x, columns=['t','x'])
-        table_y = wandb.Table(data=data_y, columns=['t','y'])
-        table_z = wandb.Table(data=data_z, columns=['t','z'])
-        wandb.log({'l_com':l_com, 'l_root':l_root, 'l_root_orn':l_root_orn, 'l_joint':l_joint_eul, 'l_vel':l_joint_vel_eul, 'frames_until_failure':frames_until_failure,
-        })
-
-        #Save this file for future reference and config changes
-        eval_file = os.path.join('scripts','007_human_stable_pd.py')
-        wandb.save(eval_file)
 
 if __name__ == "__main__":
     main()

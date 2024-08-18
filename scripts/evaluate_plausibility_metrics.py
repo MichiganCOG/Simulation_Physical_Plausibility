@@ -89,72 +89,8 @@ def main(args):
             plt.tight_layout()
             '''
 
-            if dataset == 'poseformer':
-                dataset_root = '/z/home/natlouis/PoseFormer/saved_outputs/world_space'
-                data_path    = os.path.join(dataset_root,'cpn_ft_'+subj+'_'+mvmt+'_cam3.npy')
-
-                kpts_3d = median_filter(np.load(data_path), 15)
-                kpts_3d[:,:,[1,2]] = kpts_3d[:,:,[2,1]]
-                kpts_3d[...,0] *= -1
-
-                #Downsample to 25 fps
-                kpts_3d = kpts_3d[::2]
-                kpts_3d = kpts_3d[frame_offset:frame_offset+num_frames]
-
-                kpts_3d /= 1000
-
-                ground_height = estimate_ground_height(kpts_3d, foot_idxs=[3,6])
-                #lfoot_contact, rfoot_contact = estimate_ground_contacts(kpts_3d, ground_height, lfoot_idxs=[6], rfoot_idxs=[3])
-                fs = compute_fs(kpts_3d, lfoot_contact, rfoot_contact, lfoot_idx=6, rfoot_idx=3)
-                gp = compute_gp(kpts_3d, ground_height)
-                mpjpe_g = compute_mpjpe_g(kpts_3d, gt_kpts_3d)
-                mpjpe = compute_mpjpe(kpts_3d, gt_kpts_3d)
-
-            elif dataset == 'gt_poseformer':
-                dataset_root = '/z/home/natlouis/PoseFormer/saved_outputs/world_space'
-                data_path    = os.path.join(dataset_root,'gt_cpn_ft_'+subj+'_'+mvmt+'_cam3.npy')
-
-                kpts_3d = np.load(data_path)
-                kpts_3d[:,:,[1,2]] = kpts_3d[:,:,[2,1]]
-                kpts_3d[...,0] *= -1
-
-                #Downsample to 25 fps
-                kpts_3d = kpts_3d[::2]
-                kpts_3d = kpts_3d[frame_offset:frame_offset+num_frames]
-
-                ground_height = estimate_ground_height(kpts_3d, foot_idxs=[3,6])
-                #lfoot_contact, rfoot_contact = estimate_ground_contacts(kpts_3d, ground_height, lfoot_idxs=[6], rfoot_idxs=[3])
-                fs = compute_fs(kpts_3d, lfoot_contact, rfoot_contact, lfoot_idx=6, rfoot_idx=3)
-                gp = compute_gp(kpts_3d, ground_height)
-                mpjpe_g = compute_mpjpe_g(kpts_3d, gt_kpts_3d)
-                mpjpe = compute_mpjpe(kpts_3d, gt_kpts_3d)
-
-            elif dataset == 'neural_physcap':
-                dataset_root = '/z/home/natlouis/Neural_Physcap_Demo/results/phys_results/h36m'
-                data_path    = os.path.join(dataset_root,subj+'_'+mvmt+'.60457274','p_3D_dyn_world.npy')
-
-                kpts_3d = median_filter(np.load(data_path), 15)
-                kpts_3d = np.reshape(kpts_3d, (kpts_3d.shape[0],-1,3))
-                kpts_3d[:,:,[1,2]] = kpts_3d[:,:,[2,1]]
-                kpts_3d[...,0] *= -1
-
-                t_offset=int(10/2) #The authors use a temporal window of length 10, so the first 10 frames are discarded. (Divide 2 for downsampling)
-
-                #Downsample to 25 fps
-                kpts_3d = kpts_3d[::2]
-                kpts_3d = kpts_3d[frame_offset-t_offset:(frame_offset-t_offset)+num_frames]
-
-                kpts_3d /= 1000
-
-                ground_height = estimate_ground_height(kpts_3d, foot_idxs=[5,9])
-                #lfoot_contact, rfoot_contact = estimate_ground_contacts(kpts_3d, ground_height, lfoot_idxs=[4], rfoot_idxs=[8])
-                fs = compute_fs(kpts_3d, lfoot_contact, rfoot_contact, lfoot_idx=[4,5], rfoot_idx=[8,9])
-                gp = compute_gp(kpts_3d, ground_height)
-                mpjpe_g = compute_mpjpe_g(kpts_3d, gt_kpts_3d, 'physcap')
-                mpjpe = compute_mpjpe(kpts_3d, gt_kpts_3d, 'physcap')
-
-            elif dataset == 'mscoco': #No heel and toe keypoints
-                dataset_root = '/z/home/natlouis/video_grf_pred/data/pybullet/'
+            if dataset == 'mscoco': #No heel and toe keypoints
+                dataset_root = 'datasets'
                 pseudo_gt_dataset = 'h36m_25fps'
                 pseudo_gt = load_pseudo_gt(dataset_root, pseudo_gt_dataset, split, subj, mvmt, frame_offset, num_frames)
 
@@ -169,7 +105,7 @@ def main(args):
                 mpjpe = compute_mpjpe(kpts_3d, gt_kpts_3d, 'mscoco')
 
             else:
-                dataset_root = '/z/home/natlouis/video_grf_pred/data/pybullet/'
+                dataset_root = 'datasets'
                 pseudo_gt_dataset = 'h36m_25fps'
                 pseudo_gt = load_pseudo_gt(dataset_root, pseudo_gt_dataset, split, subj, mvmt, frame_offset, num_frames)
 

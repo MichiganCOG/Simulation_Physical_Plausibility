@@ -25,14 +25,6 @@ import cma
 from cma.fitness_transformations import EvalParallel2
 #cma.CMAOptions('termination_call')
 
-import wandb
-
-input_dir = './input_trajectories'
-subject  = 'Subject7'
-movement = 'Counter_Movement_Jump02'
-
-output_traj_file = 'temp_trajectory.npy'
-
 parser = argparse.ArgumentParser()
 
 parser.add_argument('--pose_format', default='mscoco', help='mscoco, mocap_47, mscoco_foot')
@@ -41,18 +33,18 @@ parser.add_argument('--nCPUs', default=0, type=int, help='Number of CPUs to para
 parser.add_argument('--drawRef', action='store_true', help='draw kinematic reference')
 
 #hyperparameters
-parser.add_argument('--sim_freq', default=240, type=int, help='Simulator frequency (Hz), time steps per second')
+parser.add_argument('--sim_freq', default=1000, type=int, help='Simulator frequency (Hz), time steps per second')
 parser.add_argument('--agent_urdf', default='humanoid/humanoid.urdf', type=str, help='URDF file for humanoid. humanoid/humanoid.urdf or custom_urdf/constrained_humanoid.urdf')
 parser.add_argument('--kps', default='1000,100,500,500,400,400,300,500,500,400,400,300', type=str, help='proportional gains')
 parser.add_argument('--kds', default='100,10,50,50,40,40,30,50,50,40,40,30', type=str, help='derivative gains')
-parser.add_argument('--ctrl_rate', default=10, type=int, help='Control sampling rate for B-Spline. Max of video rate (frames per second)')
+parser.add_argument('--ctrl_rate', default=25, type=int, help='Control sampling rate for B-Spline. Max of video rate (frames per second)')
 parser.add_argument('--sigma', default=0.01, type=float, help='CMA optimizer initial sigma')
 parser.add_argument('--popsize', default=100, type=int, help='CMA optimizer population size')
 parser.add_argument('--maxiter', default=20, type=int, help='CMA optimizer maximum number of iterations')
-parser.add_argument('--w_com', default=15.0, type=float, help='Weight loss for center of mass')
+parser.add_argument('--w_com', default=20, type=float, help='Weight loss for center of mass')
 parser.add_argument('--w_comv', default=0.5, type=float, help='Weight loss for velocity of center of mass')
-parser.add_argument('--w_com_orn', default=4, type=float, help='Weight loss for center of mass orientation')
-parser.add_argument('--w_joint', default=0.5, type=float, help='Weight loss for joints pose')
+parser.add_argument('--w_com_orn', default=1.0, type=float, help='Weight loss for center of mass orientation')
+parser.add_argument('--w_joint', default=1.0, type=float, help='Weight loss for joints pose')
 parser.add_argument('--w_vel', default=0.0005, type=float, help='Weight loss for joint velocities')
 parser.add_argument('--w_acc', default=1e-10, type=float, help='Weight loss for joint velocities')
 parser.add_argument('--w_feet', default=0, type=float, help='Weight loss for feet on ground')
@@ -71,30 +63,28 @@ parser.add_argument('--friction', default=0.9, type=float, help='Friction coeffi
 parser.add_argument('--mass_scale', default=1.0, type=float, help='Scale humanoid mass by this amount to match measured mass')
 parser.add_argument('--joints_enforce', default=None, type=str, metavar='LIST', help='(DEPRECATED) Joints indices to constrain in joints pose loss')
 parser.add_argument('--floor_pent_reduce', default=0.0, type=float, help='reduce floor peneration by this percentage amount')
-parser.add_argument('--lower_feet_to_height', type=float, help='lower the links to height X')
+parser.add_argument('--lower_feet_to_height', default=-0.001, type=float, help='lower the links to height X')
 parser.add_argument('--match_init_contact', action='store_true', help='Match initial contact of both feet with motion data')
 parser.add_argument('--rotate_ankles', action='store_true', help='Rotate ankles to standard basis, to account for bias default angle.')
 parser.add_argument('--const_seg_lens', action='store_true', help='Constrain segment lengths based on averages')
 
 parser.add_argument('--custom_pose', default=None, type=str, help='Optimize a hand crafted pose')
-parser.add_argument('--dataset_root', default='/z/home/natlouis/video_grf_pred/data/pybullet/', type=str, help='Root for dataset of source motion files')
-parser.add_argument('--dataset', default='forcepose', type=str, help='dataset name')
+parser.add_argument('--dataset_root', default='datasets/', type=str, help='Root for dataset of source motion files')
+parser.add_argument('--dataset', default='h36m_25fps', type=str, help='dataset name')
 parser.add_argument('--data_splits', default='train,val', type=str, help='list of split names from dataset')
-parser.add_argument('--subject', default='Subject7', type=str, help='subject name')
-parser.add_argument('--movement', default='Counter_Movement_Jump02', type=str, help='movement name')
+parser.add_argument('--subject', default='S11', type=str, help='subject name')
+parser.add_argument('--movement', default='Walking_1', type=str, help='movement name')
 parser.add_argument('--frame_offset', default=0, type=int, help='Offset first frame by this number')
 
 parser.add_argument('--write_video', action='store_true', help='Write out video')
 parser.add_argument('--vid_dir', default='./optimized_videos', type=str, help='Output video directory')
 parser.add_argument('--video_name', type=str, help='Output video name')
 
-parser.add_argument('--log', action='store_true', help='Log wandb')
 parser.add_argument('--exp_name', default='motion_reconstruction', type=str)
 
 parser.set_defaults(useGUI=False)
 parser.set_defaults(drawRef=False)
 parser.set_defaults(opt_eul=False)
-parser.set_defaults(log=False)
 parser.set_defaults(write_video=False)
 parser.set_defaults(const_seg_lens=False)
 
@@ -171,25 +161,13 @@ os.makedirs(args.vid_dir, exist_ok=True)
 vid_options = options="--mp4=\""+args.vid_dir+"/"+vid_name+"\" --mp4fps="+str(sim_freq)
 
 output_yaml_file = args.exp_name+'.yaml'
-use_wandb = False
-if args.log:
-    use_wandb = True
-    wandb.init(project='PyBullet', name=args.exp_name, config=args)
-    wandb.config.update({'source':subject+'_'+movement,
-                         'time_step':time_step,
-                         'ctrl_freq':ctrl_freq})
-    run_id = wandb.run.id
-    output_traj_file = run_id+'.npy'
-    output_yaml_file = run_id+'.yaml'
-
-    #Save this file for future reference and config changes
-    train_file = os.path.join('scripts','015_human_stable_pd.py') 
-    wandb.save(train_file)
 
 #Write out config to YAML file
-with open(os.path.join('./log', output_yaml_file), 'w') as f:
+os.makedirs('./configs', exist_ok=True)
+output_traj_file = dataset+'_'+subj+'_'+mvmt+'.npy'
+with open(os.path.join('./configs', output_yaml_file), 'w') as f:
     _args = vars(args)
-    _args['input_traj'] = os.path.join('./output_trajectories',output_traj_file)
+    _args['input_traj'] = os.path.join('./saved_traj',output_traj_file)
     yaml.dump(_args, f, default_flow_style=False)
 
 pelvis = 0 #root
@@ -918,18 +896,6 @@ for opt_step in range(nwin):
         #print('curr_base: {}'.format(curr_base))
         #print('--'*30)
 
-        if use_wandb and itr%10==0:
-            wandb.log({'COM loss':loss_com,
-                       'COMv loss':loss_comv,
-                       'COM_orn loss':loss_com_orn,
-                       'Joint loss':loss_joint,
-                       'feet_loss':loss_feet,
-                       'velocity_loss':loss_vel,
-                       'acc_loss':loss_acc,
-                       'head_loss':loss_head,
-                       'chest_loss':loss_chest,
-                       'balance_loss':loss_bos})
-
         return total
     
     #Run CMA Evolution Strategy algorithm to optimize for best gains
@@ -941,8 +907,8 @@ for opt_step in range(nwin):
         while not es.stop():
             X = es.ask()
             es.tell(X, eval_all(X, args=(itr,)))
-            if use_wandb and itr%10==0:
-                wandb.log({'Total loss':es.result[1]})
+            total_loss = es.result[1]
+            print('Total loss: {}'.format(total_loss))
             #es.logger.add()
             #es.disp()
             itr += 1
@@ -1048,8 +1014,6 @@ for opt_step in range(nwin):
     l_joint_vel = np.sum(jws * (targ_kin_vel [:len(traj_com)] - np.array(traj_curr_vel))**2)
 
     print('l_com_dist: {}, l_joint: {}, l_joint_vel: {}'.format(l_com_dist, l_joint, l_joint_vel))
-    if use_wandb:
-        wandb.log({'l_com_dist':l_com_dist, 'opt_step':opt_step})
 
     out_path = os.path.join('output_trajectories', output_traj_file)
     np.save(out_path, opt_traj)
